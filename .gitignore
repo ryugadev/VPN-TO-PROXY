@@ -3,7 +3,7 @@
 *.exe~
 benchmark
 benchmark_*
-server
+/server
 server_*
 test_server
 vpn-agent

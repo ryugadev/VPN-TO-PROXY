@@ -26,7 +26,7 @@ func (w *WgInterface) GetName() string          { return w.name }
 func (w *WgInterface) GetLocalIP() string       { return w.localIP }
 func (w *WgInterface) GetInterfaceName() string { return w.interfaceName }
 func (w *WgInterface) GetStatus() string        { return w.status }
-func (w *WgInterface) GetNamespace() string    { return w.namespace }
+func (w *WgInterface) GetNamespace() string     { return w.namespace }
 
 type WireGuardDriver struct {
 	mu     sync.Mutex
@@ -61,7 +61,8 @@ func (d *WireGuardDriver) Connect(ctx context.Context, node *domain.VPNNode) (do
 	}
 	defer os.Remove(tmpFile.Name())
 
-	if _, err := tmpFile.WriteString(node.ConfigText); err != nil {
+	wgConfig := sanitizeWireGuardConfig(node.ConfigText)
+	if _, err := tmpFile.WriteString(wgConfig); err != nil {
 		return nil, fmt.Errorf("failed to write config file: %v", err)
 	}
 	tmpFile.Close()
@@ -152,4 +153,47 @@ func parseLocalIP(config string) string {
 		}
 	}
 	return ""
+}
+
+func sanitizeWireGuardConfig(config string) string {
+	allowed := map[string]map[string]bool{
+		"interface": {
+			"privatekey": true,
+			"listenport": true,
+			"fwmark":     true,
+		},
+		"peer": {
+			"publickey":           true,
+			"presharedkey":        true,
+			"allowedips":          true,
+			"endpoint":            true,
+			"persistentkeepalive": true,
+		},
+	}
+
+	var section string
+	var out []string
+	lines := strings.Split(config, "\n")
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = strings.ToLower(strings.TrimSpace(strings.Trim(line, "[]")))
+			if section == "interface" || section == "peer" {
+				out = append(out, "["+strings.Title(section)+"]")
+			}
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(parts[0]))
+		if allowed[section][key] {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n") + "\n"
 }
