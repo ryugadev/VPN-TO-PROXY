@@ -1,0 +1,7 @@
+agent_id: vn-agent-01
+master_url: ws://localhost:8080/ws/agent
+token: YOUR_AGENT_TOKEN
+heartbeat_interval_seconds: 30
+metrics_interval_seconds: 5
+proxy_port_range_start: 8000
+proxy_port_range_end: 9000

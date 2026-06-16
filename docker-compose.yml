@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  vpn-to-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vpn-to-proxy-platform
+    # Host networking allows dynamic binding of hundreds of SOCKS5/HTTP ports
+    # without having to declare them upfront in docker-compose.
+    network_mode: host
+    restart: always
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./data:/app/data
+    environment:
+      - GIN_MODE=release
+    # We can pass custom db path or ports if needed
+    command: ["./server", "-db", "/app/data/vpn_to_proxy.db", "-port", "8080"]

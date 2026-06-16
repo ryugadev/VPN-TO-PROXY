@@ -1,0 +1,27 @@
+# Compiled binaries
+*.exe
+*.exe~
+benchmark
+benchmark_*
+server
+server_*
+test_server
+vpn-agent
+vpn-to-proxy
+vpn_server
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+
+# Env / secrets
+.env
+*.key
+
+# Frontend
+webapp/node_modules/
+webapp/dist/

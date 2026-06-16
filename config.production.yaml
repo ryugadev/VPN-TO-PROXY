@@ -1,0 +1,48 @@
+environment: production
+
+server:
+  host: 0.0.0.0
+  port: ${PORT:-8080}
+  public_url: ${PUBLIC_URL}
+
+database:
+  driver: sqlite
+  path: ${DB_PATH:-vpn_to_proxy.db}
+  wal: true
+  busy_timeout_ms: 10000
+  max_open_connections: 1
+
+security:
+  secret_key_env: VPN_TO_PROXY_SECRET_KEY
+  session_ttl_hours: 24
+  bcrypt_cost: 12
+  require_customer_auth: true
+  expose_plaintext_tokens_once: true
+
+payment:
+  provider: mock
+  stripe_enabled: false
+  paddle_enabled: false
+  crypto_manual_enabled: false
+  bank_transfer_enabled: false
+
+features:
+  customer_dashboard: true
+  admin_billing_dashboard: true
+  usage_enforcement: true
+  backup_export: true
+  mock_payment_provider: true
+  agent_cluster: true
+
+backup:
+  include_database: true
+  include_config: true
+  include_audit: true
+  formats:
+    - json
+    - zip
+
+logging:
+  audit_events: true
+  redact_tokens: true
+  redact_passwords: true
