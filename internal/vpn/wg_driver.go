@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
@@ -61,7 +62,10 @@ func (d *WireGuardDriver) Connect(ctx context.Context, node *domain.VPNNode) (do
 	}
 	defer os.Remove(tmpFile.Name())
 
-	wgConfig := sanitizeWireGuardConfig(node.ConfigText)
+	wgConfig, err := sanitizeWireGuardConfig(node.ConfigText)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sanitize WireGuard config: %v", err)
+	}
 	if _, err := tmpFile.WriteString(wgConfig); err != nil {
 		return nil, fmt.Errorf("failed to write config file: %v", err)
 	}
@@ -155,7 +159,7 @@ func parseLocalIP(config string) string {
 	return ""
 }
 
-func sanitizeWireGuardConfig(config string) string {
+func sanitizeWireGuardConfig(config string) (string, error) {
 	allowed := map[string]map[string]bool{
 		"interface": {
 			"privatekey": true,
@@ -192,8 +196,45 @@ func sanitizeWireGuardConfig(config string) string {
 		}
 		key := strings.ToLower(strings.TrimSpace(parts[0]))
 		if allowed[section][key] {
+			if section == "peer" && key == "endpoint" {
+				normalized, err := resolveWireGuardEndpoint(strings.TrimSpace(parts[1]))
+				if err != nil {
+					return "", err
+				}
+				line = strings.TrimSpace(parts[0]) + " = " + normalized
+			}
 			out = append(out, line)
 		}
 	}
-	return strings.Join(out, "\n") + "\n"
+	return strings.Join(out, "\n") + "\n", nil
+}
+
+func resolveWireGuardEndpoint(endpoint string) (string, error) {
+	endpoint = strings.TrimSpace(strings.Split(endpoint, "#")[0])
+	if endpoint == "" {
+		return "", fmt.Errorf("empty WireGuard endpoint")
+	}
+
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("invalid WireGuard endpoint %q: %w", endpoint, err)
+	}
+
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		return net.JoinHostPort(ip.String(), port), nil
+	}
+
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve WireGuard endpoint host %q: %w", host, err)
+	}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			return net.JoinHostPort(v4.String(), port), nil
+		}
+	}
+	if len(ips) > 0 {
+		return net.JoinHostPort(ips[0].String(), port), nil
+	}
+	return "", fmt.Errorf("failed to resolve WireGuard endpoint host %q: no IP addresses found", host)
 }
