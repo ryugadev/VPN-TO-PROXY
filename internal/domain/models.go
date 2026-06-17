@@ -80,20 +80,22 @@ type ExpressVPNSession struct {
 }
 
 type Proxy struct {
-	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	VPNNodeID string    `gorm:"index" json:"vpn_node_id"`
-	Port      int       `gorm:"uniqueIndex" json:"port"`
-	Type      string    `gorm:"not null" json:"type"`                     // socks5, http
-	Status    string    `gorm:"not null;default:'stopped'" json:"status"` // running, stopped, error
-	BindIP    string    `gorm:"default:'0.0.0.0'" json:"bind_ip"`
-	Username  string    `json:"username"`
-	Password  string    `json:"password"`
-	Host      string    `json:"host"`
-	PublicIP  string    `json:"public_ip"`
-	Country   string    `json:"country"`
-	Region    string    `json:"region"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string     `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	VPNNodeID string     `gorm:"index" json:"vpn_node_id"`
+	Port      int        `gorm:"uniqueIndex" json:"port"`
+	Type      string     `gorm:"not null" json:"type"`                     // socks5, http
+	Status    string     `gorm:"not null;default:'stopped'" json:"status"` // running, stopped, error
+	BindIP    string     `gorm:"default:'0.0.0.0'" json:"bind_ip"`
+	Username  string     `json:"username"`
+	Password  string     `json:"password"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	Host      string     `json:"host"`
+	PublicIP  string     `json:"public_ip"`
+	Country   string     `json:"country"`
+	Region    string     `json:"region"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 
 	// Extended fields
 	AgentID      string `json:"agent_id"`

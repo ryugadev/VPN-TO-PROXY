@@ -145,6 +145,7 @@ func main() {
 	heartbeatService.Start(ctxBg)
 	metricsService.Start(ctxBg)
 	healthMonitor.Start(ctxBg)
+	proxyMgr.StartExpiryMonitor(ctxBg, time.Minute)
 
 	// Record initial heartbeat for local agent
 	heartbeatService.RecordHeartbeat("local-agent", 0, 0, 0, 0)

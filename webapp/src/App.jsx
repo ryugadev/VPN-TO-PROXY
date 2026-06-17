@@ -222,6 +222,8 @@ export default function App() {
   const [proxyType, setProxyType] = useState('socks5');
   const [proxyUser, setProxyUser] = useState('');
   const [proxyPass, setProxyPass] = useState('');
+  const [proxyExpiresHours, setProxyExpiresHours] = useState('12');
+  const [proxyProvisionNotice, setProxyProvisionNotice] = useState(null);
 
   // ExpressVPN Credentials states
   const [selectedCred, setSelectedCred] = useState('');
@@ -488,7 +490,8 @@ export default function App() {
           port: parseInt(proxyPort),
           type: proxyType,
           username: proxyUser || undefined,
-          password: proxyPass || undefined
+          password: proxyPass || undefined,
+          expires_hours: parseInt(proxyExpiresHours || '12', 10)
         })
       });
 
@@ -497,10 +500,21 @@ export default function App() {
         throw new Error(data.error || 'Failed to create proxy');
       }
 
+      const data = await res.json();
+      const createdProxy = data.proxy || data;
+      setProxyProvisionNotice({
+        bindIP: createdProxy.bind_ip || '0.0.0.0',
+        port: createdProxy.port,
+        username: createdProxy.username,
+        password: data.provisioned_password || createdProxy.password || '',
+        expiresAt: data.expires_at || createdProxy.expires_at,
+        expiresInHours: data.expires_in_hours || 12
+      });
       notify('success', `Proxy configured on port ${proxyPort}`);
       setProxyPort('');
       setProxyUser('');
       setProxyPass('');
+      setProxyExpiresHours('12');
       queryClient.invalidateQueries({ queryKey: ['proxies'] });
     } catch (err) {
       notify('error', err.message);
@@ -1443,6 +1457,18 @@ export default function App() {
                 </div>
               </div>
 
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Rental Hours</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={proxyExpiresHours}
+                  onChange={(e) => setProxyExpiresHours(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-violet-600"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">Leave username/password empty to auto-generate access for the rental.</p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-slate-400 block mb-1">Username (Optional)</label>
@@ -1465,6 +1491,17 @@ export default function App() {
                   />
                 </div>
               </div>
+
+              {proxyProvisionNotice && (
+                <div className="bg-emerald-950/20 border border-emerald-700/30 rounded-xl p-3 text-xs text-emerald-200 space-y-1">
+                  <div className="font-semibold text-emerald-300">Provisioned proxy details</div>
+                  <div>Host: use the server IP that hosts this app</div>
+                  <div>Port: {proxyProvisionNotice.port}</div>
+                  <div>Username: {proxyProvisionNotice.username}</div>
+                  <div>Password: {proxyProvisionNotice.password || 'Using your custom password'}</div>
+                  <div>Expires: {proxyProvisionNotice.expiresAt ? new Date(proxyProvisionNotice.expiresAt).toLocaleString() : `${proxyProvisionNotice.expiresInHours} hours from creation`}</div>
+                </div>
+              )}
 
               <button 
                 type="submit" 
@@ -1676,10 +1713,17 @@ export default function App() {
                           </td>
                           <td className="px-5 py-4 text-xs font-mono text-slate-400">
                             {prxy.username ? (
-                              <span className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-850 w-fit">
-                                <Lock className="h-3 w-3 text-slate-500" />
-                                <span>{prxy.username}:{prxy.password ? '••••••' : ''}</span>
-                              </span>
+                              <div className="flex flex-col gap-1">
+                                <span className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-850 w-fit">
+                                  <Lock className="h-3 w-3 text-slate-500" />
+                                  <span>{prxy.username}:{prxy.password ? '••••••' : ''}</span>
+                                </span>
+                                {prxy.expires_at && (
+                                  <span className="text-[10px] text-slate-500">
+                                    Expires {new Date(prxy.expires_at).toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-slate-600">None</span>
                             )}

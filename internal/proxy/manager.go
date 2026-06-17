@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -49,6 +50,19 @@ func (m *ProxyManager) StartProxy(proxyID string) error {
 		prxy.Status = "running"
 		m.proxyRepo.Update(prxy)
 		return nil
+	}
+
+	if prxy.ExpiresAt != nil && time.Now().After(*prxy.ExpiresAt) {
+		now := time.Now()
+		prxy.Status = "expired"
+		prxy.RevokedAt = &now
+		m.proxyRepo.Update(prxy)
+		m.auditRepo.Create(&domain.AuditLog{
+			Action:    "PROXY_EXPIRED",
+			Details:   fmt.Sprintf("Proxy on port %d expired before start", prxy.Port),
+			Timestamp: now,
+		})
+		return fmt.Errorf("proxy on port %d has expired", prxy.Port)
 	}
 
 	// Fetch outbound IP from connected VPN (if set)
@@ -131,6 +145,72 @@ func (m *ProxyManager) StopProxy(proxyID string) error {
 	return nil
 }
 
+func (m *ProxyManager) ExpireProxy(proxyID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	prxy, err := m.proxyRepo.GetByID(proxyID)
+	if err != nil {
+		return fmt.Errorf("proxy not found: %v", err)
+	}
+
+	server, exists := m.servers[prxy.Port]
+	if exists {
+		server.Stop()
+		delete(m.servers, prxy.Port)
+	}
+
+	now := time.Now()
+	prxy.Status = "expired"
+	prxy.RevokedAt = &now
+	if err := m.proxyRepo.Update(prxy); err != nil {
+		return err
+	}
+
+	m.auditRepo.Create(&domain.AuditLog{
+		Action:    "PROXY_EXPIRED",
+		Details:   fmt.Sprintf("Proxy expired on port %d", prxy.Port),
+		Timestamp: now,
+	})
+
+	return nil
+}
+
+func (m *ProxyManager) SweepExpiredProxies() {
+	proxies, err := m.proxyRepo.List()
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, prxy := range proxies {
+		if prxy.ExpiresAt != nil && now.After(*prxy.ExpiresAt) && prxy.Status == "running" {
+			_ = m.ExpireProxy(prxy.ID)
+		} else if prxy.ExpiresAt != nil && now.After(*prxy.ExpiresAt) && prxy.Status == "stopped" {
+			prxy.Status = "expired"
+			prxy.RevokedAt = &now
+			_ = m.proxyRepo.Update(&prxy)
+		}
+	}
+}
+
+func (m *ProxyManager) StartExpiryMonitor(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.SweepExpiredProxies()
+			}
+		}
+	}()
+}
+
 func (m *ProxyManager) RestoreProxies() {
 	proxies, err := m.proxyRepo.List()
 	if err != nil {
@@ -138,6 +218,13 @@ func (m *ProxyManager) RestoreProxies() {
 	}
 
 	for _, prxy := range proxies {
+		if prxy.ExpiresAt != nil && time.Now().After(*prxy.ExpiresAt) {
+			now := time.Now()
+			prxy.Status = "expired"
+			prxy.RevokedAt = &now
+			_ = m.proxyRepo.Update(&prxy)
+			continue
+		}
 		if prxy.Status == "running" {
 			m.StartProxy(prxy.ID)
 		}

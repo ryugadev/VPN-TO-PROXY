@@ -474,6 +474,7 @@ type CreateProxyInput struct {
 	BindIP       string `json:"bind_ip"`
 	Username     string `json:"username"`
 	Password     string `json:"password"`
+	ExpiresHours int    `json:"expires_hours"`
 	RotationMode string `json:"rotation_mode"`
 }
 
@@ -488,6 +489,18 @@ func (h *Handler) CreateProxy(c *gin.Context) {
 		input.BindIP = "0.0.0.0"
 	}
 
+	generatedPassword := ""
+	if input.Username == "" || input.Password == "" {
+		cred, err := proxy.NewProxyCredentialManager().GenerateCredential()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to generate proxy credential: %v", err)})
+			return
+		}
+		input.Username = cred.Username
+		input.Password = cred.Password
+		generatedPassword = cred.Password
+	}
+
 	existing, _ := h.proxyRepo.GetByPort(input.Port)
 	if existing != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Port %d is already in use", input.Port)})
@@ -498,6 +511,12 @@ func (h *Handler) CreateProxy(c *gin.Context) {
 	if rotationMode == "" {
 		rotationMode = "static"
 	}
+
+	expiresHours := input.ExpiresHours
+	if expiresHours <= 0 {
+		expiresHours = 12
+	}
+	expiresAt := time.Now().Add(time.Duration(expiresHours) * time.Hour)
 
 	node, err := h.nodeRepo.GetByID(input.VPNNodeID)
 	agentID := "local-agent"
@@ -513,6 +532,7 @@ func (h *Handler) CreateProxy(c *gin.Context) {
 		BindIP:       input.BindIP,
 		Username:     input.Username,
 		Password:     input.Password,
+		ExpiresAt:    &expiresAt,
 		Status:       "stopped",
 		AgentID:      agentID,
 		RotationMode: rotationMode,
@@ -523,7 +543,13 @@ func (h *Handler) CreateProxy(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, prxy)
+	c.JSON(http.StatusCreated, gin.H{
+		"proxy":                prxy,
+		"provisioned_password": generatedPassword,
+		"expires_at":           prxy.ExpiresAt,
+		"expires_in_hours":     expiresHours,
+		"rental_mode":          true,
+	})
 }
 
 func (h *Handler) StartProxy(c *gin.Context) {
