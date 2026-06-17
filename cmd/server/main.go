@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,7 +36,15 @@ func main() {
 	log.Printf("Starting VPN to Proxy Management Platform Backend on port %s...", *port)
 
 	// 1. Initialize SQLite database
-	db, err := repository.NewSQLiteDB(*dbPath)
+	resolvedDBPath, err := resolveDBPath(*dbPath)
+	if err != nil {
+		log.Fatalf("Failed to resolve database path: %v", err)
+	}
+	if resolvedDBPath != *dbPath {
+		log.Printf("Database path %q is not writable, using %q instead", *dbPath, resolvedDBPath)
+	}
+
+	db, err := repository.NewSQLiteDB(resolvedDBPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -207,4 +218,42 @@ func main() {
 	}
 
 	log.Println("Server exiting")
+}
+
+func resolveDBPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		path = "vpn_to_proxy.db"
+	}
+
+	if err := ensureWritableSQLitePath(path); err == nil {
+		return path, nil
+	}
+
+	fallbackDir := filepath.Join(os.TempDir(), "vpn-to-proxy")
+	if err := os.MkdirAll(fallbackDir, 0o755); err != nil {
+		return "", err
+	}
+
+	fallbackPath := filepath.Join(fallbackDir, filepath.Base(path))
+	if err := ensureWritableSQLitePath(fallbackPath); err != nil {
+		return "", fmt.Errorf("primary path %q is unavailable and fallback %q also failed: %w", path, fallbackPath, err)
+	}
+
+	return fallbackPath, nil
+}
+
+func ensureWritableSQLitePath(path string) error {
+	dir := filepath.Dir(path)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }

@@ -1230,6 +1230,10 @@ export default function App() {
                       setVpnProvider('ExpressVPN');
                     } else if (e.target.value === 'expressvpn_mock') {
                       setVpnProvider('ExpressVPN (Mock)');
+                    } else if (e.target.value === 'wireguard') {
+                      setVpnProvider('WireGuard');
+                    } else {
+                      setVpnProvider('Generic');
                     }
                   }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-600"
@@ -1240,6 +1244,22 @@ export default function App() {
                   <option value="mock">Generic (Mock)</option>
                 </select>
               </div>
+
+              {(vpnType === 'wireguard' || vpnType === 'mock') && (
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">WireGuard Config (.conf)</label>
+                  <textarea
+                    value={vpnConfig}
+                    onChange={(e) => setVpnConfig(e.target.value)}
+                    placeholder={`[Interface]\nAddress = 10.14.0.2/16\nPrivateKey = ...\n\n[Peer]\nPublicKey = ...\nAllowedIPs = 0.0.0.0/0\nEndpoint = host:51820`}
+                    rows={10}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-violet-600 font-mono leading-5 resize-y"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Dán toàn bộ nội dung file `.conf` vào đây. `DNS` sẽ được bỏ qua khi sanitize.
+                  </p>
+                </div>
+              )}
 
               {/* ExpressVPN Configuration Form */}
               {(vpnType === 'expressvpn' || vpnType === 'expressvpn_mock') && (
