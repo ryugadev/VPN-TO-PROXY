@@ -284,7 +284,7 @@ func (s *GoProxyServer) handleSocks5(conn net.Conn, reader *bufio.Reader) {
 		return
 	}
 	destPort := binary.BigEndian.Uint16(portBytes[:])
-	destAddr := fmt.Sprintf("%s:%d", destHost, destPort)
+	destAddr := net.JoinHostPort(destHost, fmt.Sprintf("%d", destPort))
 
 	release := func() {}
 	if s.guard != nil {
