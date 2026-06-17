@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"gorm.io/gorm"
+
 	"vpn-to-proxy/internal/abuse"
 	"vpn-to-proxy/internal/api"
 	"vpn-to-proxy/internal/billing"
@@ -44,9 +46,12 @@ func main() {
 		log.Printf("Database path %q is not writable, using %q instead", *dbPath, resolvedDBPath)
 	}
 
-	db, err := repository.NewSQLiteDB(resolvedDBPath)
+	db, activeDBPath, err := openSQLiteDB(resolvedDBPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	if activeDBPath != resolvedDBPath {
+		log.Printf("Primary database %q failed write validation, using fallback %q", resolvedDBPath, activeDBPath)
 	}
 	log.Println("SQLite database initialized successfully")
 
@@ -109,7 +114,7 @@ func main() {
 	proxyMgr := proxy.NewProxyManager(proxyRepo, vpnRepo, auditRepo, vpnMgr)
 	customerService := customer.NewService(db, proxyRepo, auditRepo)
 	customerService.EnsureDefaultPlans()
-	billingService := billing.NewService(db, *dbPath, billing.MockPaymentProvider{})
+	billingService := billing.NewService(db, activeDBPath, billing.MockPaymentProvider{})
 	billingService.EnsureDefaultPlans()
 	customerService.SetSubscriptionEnforcer(billingService)
 	abuseService := abuse.NewService(db)
@@ -241,6 +246,35 @@ func resolveDBPath(path string) (string, error) {
 	}
 
 	return fallbackPath, nil
+}
+
+func openSQLiteDB(path string) (*gorm.DB, string, error) {
+	db, err := repository.NewSQLiteDB(path)
+	if err == nil {
+		return db, path, nil
+	}
+
+	fallbackPath, fallbackErr := fallbackDBPath(path)
+	if fallbackErr != nil {
+		return nil, "", fmt.Errorf("primary database %q failed: %w; fallback path failed: %v", path, err, fallbackErr)
+	}
+	if fallbackPath == path {
+		return nil, "", err
+	}
+
+	db, fallbackErr = repository.NewSQLiteDB(fallbackPath)
+	if fallbackErr != nil {
+		return nil, "", fmt.Errorf("primary database %q failed: %w; fallback database %q failed: %v", path, err, fallbackPath, fallbackErr)
+	}
+	return db, fallbackPath, nil
+}
+
+func fallbackDBPath(path string) (string, error) {
+	fallbackDir := filepath.Join(os.TempDir(), "vpn-to-proxy")
+	if err := os.MkdirAll(fallbackDir, 0o755); err != nil {
+		return "", err
+	}
+	return filepath.Join(fallbackDir, filepath.Base(path)), nil
 }
 
 func ensureWritableSQLitePath(path string) error {

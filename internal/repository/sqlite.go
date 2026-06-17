@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -82,7 +83,28 @@ func NewSQLiteDB(dbPath string) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	if err := verifySQLiteWritable(db); err != nil {
+		if sqlDB, dbErr := db.DB(); dbErr == nil {
+			_ = sqlDB.Close()
+		}
+		return nil, err
+	}
+
 	return db, nil
+}
+
+func verifySQLiteWritable(db *gorm.DB) error {
+	table := "__vpn_to_proxy_write_check"
+	if err := db.Exec("CREATE TABLE IF NOT EXISTS " + table + " (id INTEGER PRIMARY KEY, checked_at INTEGER NOT NULL)").Error; err != nil {
+		return fmt.Errorf("sqlite write check failed while creating table: %w", err)
+	}
+	if err := db.Exec("INSERT INTO "+table+" (checked_at) VALUES (?)", time.Now().UnixNano()).Error; err != nil {
+		return fmt.Errorf("sqlite write check failed while inserting row: %w", err)
+	}
+	if err := db.Exec("DELETE FROM " + table).Error; err != nil {
+		return fmt.Errorf("sqlite write check failed while cleaning table: %w", err)
+	}
+	return nil
 }
 
 type vpnNodeRepo struct {
